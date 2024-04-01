@@ -21,6 +21,10 @@ type JsonLog struct {
 	Timestamp int64  `json:"timestamp"`
 }
 
+type Domain struct {
+	Domain string `json:"domain"`
+}
+
 func main() {
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found")
@@ -90,7 +94,12 @@ func main() {
 			panic(err)
 		}
 
-		c.JSON(200, collections)
+		domains := make([]Domain, 0)
+		for _, collection := range collections {
+			domains = append(domains, Domain{Domain: collection})
+		}
+
+		c.JSON(200, domains)
 	})
 
 	gServer.POST("/log", func(c *gin.Context) {
