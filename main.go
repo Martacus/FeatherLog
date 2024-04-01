@@ -60,7 +60,8 @@ func main() {
 		coll := database.Collection(domain)
 
 		var results []JsonLog
-		cur, err := coll.Find(context.TODO(), bson.D{{}})
+		opts := options.Find().SetSort(bson.D{{"timestamp", -1}})
+		cur, err := coll.Find(context.TODO(), bson.D{{}}, opts)
 		if err != nil {
 			panic(err)
 		}
