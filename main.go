@@ -26,6 +26,7 @@ type Domain struct {
 }
 
 func main() {
+	// Load .env file
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found")
 	}
@@ -40,59 +41,50 @@ func main() {
 		log.Fatal("You must set your 'dbName' environment variable. See\n\t https://www.mongodb.com/docs/drivers/go/current/usage-examples/#environment-variable")
 	}
 
-	client, mongoErr := mongo.Connect(context.TODO(), options.Client().ApplyURI(uri))
-	if mongoErr != nil {
-		panic(mongoErr)
-	}
+	database := getDatabase(uri, dbName)
 	defer func() {
-		if err := client.Disconnect(context.TODO()); err != nil {
-			panic(err)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := database.Client().Disconnect(ctx); err != nil {
+			log.Fatalf("Failed to disconnect from MongoDB: %v", err)
 		}
 	}()
 
-	database := client.Database(dbName)
-
-	//Gin Server
+	//Create a new gin server
 	gServer := gin.Default()
 
+	//Gets all logs for a domain
 	gServer.GET("/log/:domain", func(c *gin.Context) {
-		domain := c.Param("domain")
-		coll := database.Collection(domain)
-
 		var results []JsonLog
-		opts := options.Find().SetSort(bson.D{{"timestamp", -1}})
-		cur, err := coll.Find(context.TODO(), bson.D{{}}, opts)
-		if err != nil {
-			panic(err)
-		}
-
-		curAllErr := cur.All(context.TODO(), &results)
-		if curAllErr != nil {
-			panic(curAllErr)
-		}
-
-		c.JSON(200, results)
-	})
-
-	gServer.GET("/log/:domain/group/list", func(c *gin.Context) {
 		domain := c.Param("domain")
 		coll := database.Collection(domain)
 
-		res, err := coll.Distinct(context.TODO(), "group", bson.D{{}})
+		err := executeQueryWithTimeout(func(ctx context.Context) error {
+			opts := options.Find().SetSort(bson.D{{"timestamp", -1}})
+			cur, findErr := coll.Find(ctx, bson.D{{}}, opts)
+			if findErr != nil {
+				return findErr
+			}
+			return cur.All(ctx, &results)
+		})
+
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 
-		log.Println(len(res))
-
-		c.JSON(200, res)
+		c.JSON(http.StatusOK, results)
 	})
 
+	//Gets a list of domains
 	gServer.GET("/domain/list", func(c *gin.Context) {
-		collections, err := database.ListCollectionNames(context.TODO(), bson.D{{}})
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		collections, err := database.ListCollectionNames(ctx, bson.D{{}})
 		if err != nil {
-			panic(err)
+			log.Println(err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
 		}
 
 		domains := make([]Domain, 0)
@@ -100,29 +92,71 @@ func main() {
 			domains = append(domains, Domain{Domain: collection})
 		}
 
-		c.JSON(200, domains)
+		c.JSON(http.StatusOK, domains)
 	})
 
+	//Posts a new log to a domain
 	gServer.POST("/log", func(c *gin.Context) {
 		var logEntry JsonLog
 		if err := c.BindJSON(&logEntry); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
 		logEntry.Timestamp = time.Now().UTC().UnixMilli()
 
 		coll := database.Collection(logEntry.Domain)
-		result, err := coll.InsertOne(context.TODO(), logEntry)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		result, err := coll.InsertOne(ctx, logEntry)
 		if err != nil {
 			log.Println("Failed to insert logEntry:", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
 		}
 
 		log.Printf("Log inserted %s\n", logEntry.Log)
-		c.JSON(200, result)
+		c.JSON(http.StatusOK, result)
 	})
 
-	err := gServer.Run()
-	if err != nil {
-		log.Fatalln(err)
+	//Run server after establishing routes
+	runErr := gServer.Run()
+	if runErr != nil {
+		log.Fatalln(runErr)
 	}
+}
+
+// getDatabase returns a MongoDB database object
+// the function will fatally log and close the program if it can't establish a connection
+func getDatabase(uri string, dbName string) *mongo.Database {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	clientOptions := options.Client().ApplyURI(uri)
+	client, err := mongo.Connect(ctx, clientOptions)
+	if err != nil {
+		log.Fatalf("Failed to connect to MongoDB: %v", err)
+	}
+
+	err = client.Ping(ctx, nil)
+	if err != nil {
+		log.Fatalf("Failed to ping MongoDB: %v", err)
+	}
+
+	log.Println("Successfully connected and pinged MongoDB.")
+	return client.Database(dbName)
+}
+
+// executeQueryWithTimeout executes a MongoDB operation with a 10-second timeout
+// the function will log and return an error if the operation fails
+// more context may be added in the future
+func executeQueryWithTimeout(op func(ctx context.Context) error) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	err := op(ctx)
+	if err != nil {
+		log.Printf("MongoDB operation failed: %v", err)
+		return err
+	}
+	return nil
 }
