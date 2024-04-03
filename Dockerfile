@@ -1,5 +1,5 @@
 # Start from the official Go image to build our application.
-FROM golang:1.18 as builder
+FROM golang:1.22.1 as builder
 
 # Set the Current Working Directory inside the container
 WORKDIR /app
@@ -26,9 +26,8 @@ WORKDIR /root/
 # Copy the Pre-built binary file from the previous stage
 COPY --from=builder /app/main .
 
-# Add a script to create the .env file
-COPY create-env.sh .
-RUN chmod +x create-env.sh && ./create-env.sh
+# Expose port 8080 to the outside world
+EXPOSE 8080
 
 # Command to run the executable
 CMD ["./main"]
