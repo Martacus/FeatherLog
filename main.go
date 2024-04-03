@@ -28,7 +28,7 @@ type Domain struct {
 func main() {
 	// Load .env file
 	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found")
+		log.Println("No .env file found, will try to use run env vars.")
 	}
 
 	uri := os.Getenv("MONGODB_URI")
