@@ -17,18 +17,14 @@ const (
 	MongodbDb  = "mongodb_uri"
 )
 
-type ConfigVariables struct {
-	MongodbUri string
-	MongodbDB  string
-}
-
 func main() {
-	dbVars, err := getDatabaseVariables()
+	err := loadConfig()
 	if err != nil {
-		log.Fatal("Failed to load database variables: ", err)
+		log.Fatal("Failed to load configuration file: ", err)
 	}
 
-	database := getDatabase(dbVars.MongodbUri, dbVars.MongodbDB)
+	//Create the database
+	database := getDatabase(config.String(MongodbUri), config.String(MongodbDb))
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -50,18 +46,12 @@ func main() {
 	}
 }
 
-func getDatabaseVariables() (*ConfigVariables, error) {
+// loadConfig loads the configuration file to be used by the application
+func loadConfig() error {
 	config.WithOptions(config.ParseEnv)
-
-	// add driver for support yaml content
 	config.AddDriver(yaml.Driver)
 
-	err := config.LoadFiles("config.yml")
-	if err != nil {
-		return nil, err
-	}
-
-	return &ConfigVariables{config.String(MongodbUri), config.String(MongodbDb)}, nil
+	return config.LoadFiles("config.yml")
 }
 
 // getDatabase returns a MongoDB database object
