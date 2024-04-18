@@ -3,27 +3,23 @@ package main
 import (
 	"LowLogBackend/logging"
 	"context"
-	"errors"
-	"fmt"
 	"github.com/gin-gonic/gin"
-	"github.com/joho/godotenv"
+	"github.com/gookit/config/v2"
+	"github.com/gookit/config/v2/yaml"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"log"
-	"os"
 	"time"
 )
 
 const (
-	MongoDBURIEnvVar    = "MONGODB_URI"
-	MongoDBNameEnvVar   = "MONGODB_DB"
-	MongoDBDocsURL      = "https://www.mongodb.com/docs/drivers/go/current/usage-examples/#environment-variable"
-	ErrorEnvVarNotFound = "you must set your '%s' environment variable. See more at %s"
+	MongodbUri = "mongodb_uri"
+	MongodbDb  = "mongodb_uri"
 )
 
-type MongoDatabaseVariables struct {
-	URI    string
-	DBName string
+type ConfigVariables struct {
+	MongodbUri string
+	MongodbDB  string
 }
 
 func main() {
@@ -32,7 +28,7 @@ func main() {
 		log.Fatal("Failed to load database variables: ", err)
 	}
 
-	database := getDatabase(dbVars.URI, dbVars.DBName)
+	database := getDatabase(dbVars.MongodbUri, dbVars.MongodbDB)
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -54,22 +50,18 @@ func main() {
 	}
 }
 
-func getDatabaseVariables() (*MongoDatabaseVariables, error) {
-	if err := godotenv.Load(); err != nil {
-		return nil, errors.New("no .env file found, will try to use run environment variables")
+func getDatabaseVariables() (*ConfigVariables, error) {
+	config.WithOptions(config.ParseEnv)
+
+	// add driver for support yaml content
+	config.AddDriver(yaml.Driver)
+
+	err := config.LoadFiles("config.yml")
+	if err != nil {
+		return nil, err
 	}
 
-	uri := os.Getenv(MongoDBURIEnvVar)
-	if uri == "" {
-		return nil, fmt.Errorf(ErrorEnvVarNotFound, MongoDBURIEnvVar, MongoDBDocsURL)
-	}
-
-	dbName := os.Getenv(MongoDBNameEnvVar)
-	if dbName == "" {
-		return nil, fmt.Errorf(ErrorEnvVarNotFound, MongoDBNameEnvVar, MongoDBDocsURL)
-	}
-
-	return &MongoDatabaseVariables{URI: uri, DBName: dbName}, nil
+	return &ConfigVariables{config.String(MongodbUri), config.String(MongodbDb)}, nil
 }
 
 // getDatabase returns a MongoDB database object
