@@ -1,6 +1,7 @@
 package main
 
 import (
+	"LowLogBackend/featureflags"
 	"LowLogBackend/logging"
 	"context"
 	"github.com/gin-gonic/gin"
@@ -13,8 +14,10 @@ import (
 )
 
 const (
-	MongodbUri = "mongodb_uri"
-	MongodbDb  = "mongodb_uri"
+	MongodbUri         = "mongodb_uri"
+	MongodbDb          = "mongodb_db"
+	LogFeature         = "logging"
+	FeatureFlagFeature = "feature_flags"
 )
 
 func main() {
@@ -37,7 +40,12 @@ func main() {
 	gServer := gin.Default()
 
 	//Setting up routes
-	logging.CreateRoutes(gServer, database)
+	if config.Bool(LogFeature) {
+		logging.CreateRoutes(gServer, database)
+	}
+	if config.Bool(FeatureFlagFeature) {
+		featureflags.CreateRoutes(gServer, database)
+	}
 
 	//Run server after establishing routes
 	runErr := gServer.Run()

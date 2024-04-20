@@ -1,2 +1,10 @@
 mongodb_uri: "mongodb://localhost:27017"
 mongodb_db: "lw_logger"
+
+# true: feature on, false: feature off
+logging: true
+feature_flags: true
+
+#Routes
+logging_route: "log"
+feature_flags_route: "featureflags"

@@ -1,6 +1,7 @@
 package logging
 
 import (
+	"LowLogBackend/utility"
 	"context"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
@@ -30,7 +31,7 @@ func CreateRoutes(engine *gin.Engine, database *mongo.Database) {
 		domain := c.Param("domain")
 		coll := database.Collection(domain)
 
-		err := executeQueryWithTimeout(func(ctx context.Context) error {
+		err := utility.ExecuteQueryWithTimeout(func(ctx context.Context) error {
 			opts := options.Find().SetSort(bson.D{{"timestamp", -1}})
 			cur, findErr := coll.Find(ctx, bson.D{{}}, opts)
 			if findErr != nil {
@@ -40,11 +41,11 @@ func CreateRoutes(engine *gin.Engine, database *mongo.Database) {
 		})
 
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": err.Error()})
 			return
 		}
 
-		c.JSON(http.StatusOK, results)
+		c.JSON(http.StatusOK, gin.H{"status": "success", "data": results})
 	})
 
 	//Gets a list of domains
@@ -53,8 +54,8 @@ func CreateRoutes(engine *gin.Engine, database *mongo.Database) {
 		defer cancel()
 		collections, err := database.ListCollectionNames(ctx, bson.D{{}})
 		if err != nil {
-			log.Println(err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			log.Println("Error: ", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": err.Error()})
 			return
 		}
 
@@ -63,14 +64,14 @@ func CreateRoutes(engine *gin.Engine, database *mongo.Database) {
 			domains = append(domains, Domain{Domain: collection})
 		}
 
-		c.JSON(http.StatusOK, domains)
+		c.JSON(http.StatusOK, gin.H{"status": "success", "data": domains})
 	})
 
 	//Posts a new log to a domain
 	engine.POST("/log", func(c *gin.Context) {
 		var logEntry JsonLog
 		if err := c.BindJSON(&logEntry); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": err.Error()})
 			return
 		}
 		logEntry.Timestamp = time.Now().UTC().UnixMilli()
@@ -81,26 +82,11 @@ func CreateRoutes(engine *gin.Engine, database *mongo.Database) {
 		result, err := coll.InsertOne(ctx, logEntry)
 		if err != nil {
 			log.Println("Failed to insert logEntry:", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": err.Error()})
 			return
 		}
 
 		log.Printf("Log inserted %s\n", logEntry.Log)
-		c.JSON(http.StatusOK, result)
+		c.JSON(http.StatusOK, gin.H{"status": "success", "data": result})
 	})
-}
-
-// executeQueryWithTimeout executes a MongoDB operation with a 10-second timeout
-// the function will log and return an error if the operation fails
-// more context may be added in the future
-func executeQueryWithTimeout(op func(ctx context.Context) error) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	err := op(ctx)
-	if err != nil {
-		log.Printf("MongoDB operation failed: %v", err)
-		return err
-	}
-	return nil
 }
