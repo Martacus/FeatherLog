@@ -41,11 +41,11 @@ func CreateRoutes(engine *gin.Engine, database *mongo.Database) {
 		})
 
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": err.Error()})
+			c.JSON(http.StatusInternalServerError, err.Error())
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"status": "success", "data": results})
+		c.JSON(http.StatusOK, results)
 	})
 
 	//Gets a list of domains
@@ -55,7 +55,7 @@ func CreateRoutes(engine *gin.Engine, database *mongo.Database) {
 		collections, err := database.ListCollectionNames(ctx, bson.D{{}})
 		if err != nil {
 			log.Println("Error: ", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": err.Error()})
+			c.JSON(http.StatusInternalServerError, err.Error())
 			return
 		}
 
@@ -64,14 +64,14 @@ func CreateRoutes(engine *gin.Engine, database *mongo.Database) {
 			domains = append(domains, Domain{Domain: collection})
 		}
 
-		c.JSON(http.StatusOK, gin.H{"status": "success", "data": domains})
+		c.JSON(http.StatusOK, domains)
 	})
 
 	//Posts a new log to a domain
 	engine.POST("/log", func(c *gin.Context) {
 		var logEntry JsonLog
 		if err := c.BindJSON(&logEntry); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": err.Error()})
+			c.JSON(http.StatusInternalServerError, err.Error())
 			return
 		}
 		logEntry.Timestamp = time.Now().UTC().UnixMilli()
@@ -82,11 +82,11 @@ func CreateRoutes(engine *gin.Engine, database *mongo.Database) {
 		result, err := coll.InsertOne(ctx, logEntry)
 		if err != nil {
 			log.Println("Failed to insert logEntry:", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": err.Error()})
+			c.JSON(http.StatusInternalServerError, err.Error())
 			return
 		}
 
 		log.Printf("Log inserted %s\n", logEntry.Log)
-		c.JSON(http.StatusOK, gin.H{"status": "success", "data": result})
+		c.JSON(http.StatusOK, result)
 	})
 }

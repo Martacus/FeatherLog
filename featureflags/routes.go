@@ -80,11 +80,11 @@ func CreateRoutes(engine *gin.Engine, database *mongo.Database) {
 		})
 
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": err.Error()})
+			c.JSON(http.StatusInternalServerError, err.Error())
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"status": "success", "data": results})
+		c.JSON(http.StatusOK, results)
 	})
 
 	//Retrieve a single flag
@@ -107,7 +107,7 @@ func CreateRoutes(engine *gin.Engine, database *mongo.Database) {
 		})
 
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": err.Error()})
+			c.JSON(http.StatusInternalServerError, err.Error())
 			return
 		}
 
@@ -133,7 +133,7 @@ func CreateRoutes(engine *gin.Engine, database *mongo.Database) {
 		})
 
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": err.Error()})
+			c.JSON(http.StatusInternalServerError, err.Error())
 			return
 		}
 
@@ -147,14 +147,14 @@ func CreateRoutes(engine *gin.Engine, database *mongo.Database) {
 			}
 		}
 
-		c.JSON(http.StatusOK, gin.H{"status": "success", "data": gin.H{"enabled": true}})
+		c.JSON(http.StatusOK, gin.H{"enabled": true})
 	})
 
 	//Create a flag
 	engine.POST("/"+identifier+"/flag", func(c *gin.Context) {
 		var flag FeatureFlag
 		if err := c.BindJSON(&flag); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"status": "errorrrr", "message": err.Error()})
+			c.JSON(http.StatusInternalServerError, err.Error())
 			return
 		}
 
@@ -164,12 +164,12 @@ func CreateRoutes(engine *gin.Engine, database *mongo.Database) {
 		result, err := coll.InsertOne(ctx, flag)
 		if err != nil {
 			log.Println("Failed to insert flag:", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"status": "errorsss", "message": err.Error()})
+			c.JSON(http.StatusInternalServerError, err.Error())
 			return
 		}
 
 		log.Printf("Flag created %v\n", flag)
-		c.JSON(http.StatusOK, gin.H{"status": "success", "data": result})
+		c.JSON(http.StatusOK, result)
 	})
 }
 
