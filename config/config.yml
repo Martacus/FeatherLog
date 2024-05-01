@@ -1,0 +1,18 @@
+# MongoDB
+mongodb_uri: "mongodb://localhost:27017"
+mongodb_db: "lw_logger"
+
+# PostgresDB
+postgres_url: "postgresql://Martacus:PqnNSLK7Mt3B@ep-orange-bush-74194909.eu-central-1.aws.neon.tech/neondb?sslmode=require"
+
+# Databases, some features require a specific database while some will allow a choice. No idea how this will be implemented yet
+postgres: true
+mongodb: true
+
+# true: feature on, false: feature off
+logging: true
+feature_flags: true
+
+#Routes
+logging_route: "log"
+feature_flags_route: "featureflags"

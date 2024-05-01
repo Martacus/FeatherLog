@@ -1,7 +1,6 @@
 package featureflags
 
 import (
-	"LowLogBackend/utility"
 	"context"
 	"errors"
 	"fmt"
@@ -9,6 +8,7 @@ import (
 	"github.com/gookit/config/v2"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	"gofeather/internal/utility"
 	"log"
 	"net/http"
 	"time"
