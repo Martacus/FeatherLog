@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	_ "github.com/lib/pq"
 	"go.mongodb.org/mongo-driver/mongo"
+	"gofeather/internal/auth"
 	"gofeather/internal/constants"
 	"gofeather/internal/database"
 	"gofeather/internal/featureflags"
@@ -51,27 +52,25 @@ func main() {
 
 	//Create a new gin server
 	log.Println("Starting REST API")
-	gServer := gin.Default()
+	server := gin.Default()
 
 	//Setting up routes
 	if config.Bool(constants.LogFeature) {
-		logging.CreateRoutes(gServer, mongoDB)
+		logging.CreateRoutes(server, mongoDB)
 	}
 	if config.Bool(constants.FeatureFlagFeature) {
-		featureflags.CreateRoutes(gServer, mongoDB)
+		featureflags.CreateRoutes(server, mongoDB)
 	}
 
 	if config.Bool(constants.AuthFeature) {
-
+		auth.CreateRoutes(server, postgresConn)
 	}
 
 	//Run server after establishing routes
-	runErr := gServer.Run()
+	runErr := server.Run()
 	if runErr != nil {
 		log.Fatalln(runErr)
 	}
-
-	log.Println("DOne")
 }
 
 // loadConfig loads the configuration file to be used by the application

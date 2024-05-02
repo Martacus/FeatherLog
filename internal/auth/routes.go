@@ -2,9 +2,14 @@ package auth
 
 import (
 	"context"
+	"crypto/rand"
+	"errors"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
+	"golang.org/x/crypto/argon2"
+	"log"
 	"net/http"
+	"time"
 )
 
 type RegisterDetails struct {
@@ -13,7 +18,15 @@ type RegisterDetails struct {
 	Password string  `json:"password"`
 }
 
-func CreateRoutes(engine *gin.Engine, database *pgx.Conn) {
+type UserDetails struct {
+	Id        *string   `json:"id"`
+	Email     *string   `json:"email"`
+	Username  *string   `json:"username"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+func CreateRoutes(engine *gin.Engine, conn *pgx.Conn) {
 	//POST /api/register
 	engine.POST("/auth/register", func(c *gin.Context) {
 		var details RegisterDetails
@@ -22,11 +35,15 @@ func CreateRoutes(engine *gin.Engine, database *pgx.Conn) {
 			return
 		}
 
+		if details.Email == nil && details.Username == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Need at least one username or on email address"})
+		}
+
 		//Check if email or username exists
 		if details.Email != nil {
-			exists, err := CheckExistingEmail(database, *details.Email)
+			exists, err := CheckExistingEmail(conn, *details.Email)
 			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err})
 				return
 			}
 			if exists {
@@ -36,9 +53,9 @@ func CreateRoutes(engine *gin.Engine, database *pgx.Conn) {
 		}
 
 		if details.Username != nil {
-			exists, err := CheckExistingUsername(database, *details.Username)
+			exists, err := CheckExistingUsername(conn, *details.Username)
 			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err})
 				return
 			}
 			if exists {
@@ -47,9 +64,13 @@ func CreateRoutes(engine *gin.Engine, database *pgx.Conn) {
 			}
 		}
 
-		//Create account in database
+		//Create account in conn
+		user, err := RegisterUser(conn, details)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, err)
+		}
 
-		c.JSON(http.StatusOK, "user succesfully created")
+		c.JSON(http.StatusOK, user)
 	})
 }
 
@@ -59,9 +80,9 @@ func CreateRoutes(engine *gin.Engine, database *pgx.Conn) {
 //Response: { "success": true, "message": "User registered successfully" }
 
 // CheckExistingEmail checks if the given email already exists in the database.
-func CheckExistingEmail(db *pgx.Conn, email string) (bool, error) {
+func CheckExistingEmail(conn *pgx.Conn, email string) (bool, error) {
 	var emailCount int
-	err := db.QueryRow(context.Background(), "SELECT COUNT(*) FROM \"user\" WHERE email = $1", email).Scan(&emailCount)
+	err := conn.QueryRow(context.Background(), "SELECT COUNT(*) FROM \"user\" WHERE email = $1", email).Scan(&emailCount)
 	if err != nil {
 		return false, err
 	}
@@ -69,13 +90,71 @@ func CheckExistingEmail(db *pgx.Conn, email string) (bool, error) {
 }
 
 // CheckExistingUsername checks if the given username already exists in the database.
-func CheckExistingUsername(db *pgx.Conn, username string) (bool, error) {
+func CheckExistingUsername(conn *pgx.Conn, username string) (bool, error) {
 	var nameCount int
-	err := db.QueryRow(context.Background(), "SELECT COUNT(*) FROM \"user\" WHERE username = $1", username).Scan(&nameCount)
+	err := conn.QueryRow(context.Background(), "SELECT COUNT(*) FROM \"user\" WHERE username = $1", username).Scan(&nameCount)
 	if err != nil {
 		return false, err
 	}
 	return nameCount > 0, nil
+}
+
+func RegisterUser(conn *pgx.Conn, details RegisterDetails) (*UserDetails, error) {
+	tx, err := conn.Begin(context.Background())
+	if err != nil {
+		log.Fatalf("Unable to begin transaction: %v", err)
+		return nil, err
+	}
+	defer func() {
+		// Defer rollback and handle potential rollback error
+		if err := tx.Rollback(context.Background()); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			log.Printf("Error rolling back transaction: %v", err)
+		}
+	}()
+
+	sqlStatement := `
+		INSERT INTO "user" (username, email, password)
+		VALUES ($1, $2, $3)
+		RETURNING id, username, email, created_at, updated_at;
+	`
+
+	var userDetails UserDetails
+	log.Printf("Passworddd ===================== %v", details.Password)
+	err = tx.QueryRow(context.Background(), sqlStatement, details.Username, details.Email, hashPassword(details.Password)).
+		Scan(&userDetails.Id, &userDetails.Username, &userDetails.Email, &userDetails.CreatedAt, &userDetails.UpdatedAt)
+	if err != nil {
+		log.Printf("Error inserting new user: %v", err)
+		return nil, err
+	}
+
+	if err := tx.Commit(context.Background()); err != nil {
+		log.Printf("Error committing transaction: %v", err)
+		return nil, err
+	}
+
+	log.Println("User Registered: ")
+
+	return &userDetails, nil
+}
+
+func generateRandomBytes(length int) []byte {
+	b := make([]byte, length)
+	_, err := rand.Read(b)
+	if err != nil {
+		log.Fatal("Error generating random bytes: ", err)
+	}
+	return b
+}
+
+func hashPassword(password string) []byte {
+	salt := generateRandomBytes(16)
+	timeCost := 1
+	memory := 64 * 1024
+	parallelism := 4
+	keyLength := 32
+
+	hashedPassword := argon2.IDKey([]byte(password), salt, uint32(timeCost), uint32(memory), uint8(parallelism), uint32(keyLength))
+	return hashedPassword
 }
 
 //User Login:
