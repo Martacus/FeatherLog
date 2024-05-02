@@ -9,5 +9,6 @@ const (
 	LogFeature         = "logging"
 	FeatureFlagFeature = "feature_flags"
 	AuthFeature        = "auth"
+	SecretKey          = "secret_key"
 	DatabaseType       = "db_type"
 )

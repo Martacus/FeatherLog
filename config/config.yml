@@ -14,6 +14,9 @@ logging: true
 feature_flags: true
 auth: true
 
+#Auth
+secret_key: "watermelonisthabest"
+
 #Routes
 logging_route: "log"
 feature_flags_route: "featureflags"

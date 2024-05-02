@@ -5,7 +5,10 @@ import (
 	"crypto/rand"
 	"errors"
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/gookit/config/v2"
 	"github.com/jackc/pgx/v5"
+	"gofeather/internal/constants"
 	"golang.org/x/crypto/argon2"
 	"log"
 	"net/http"
@@ -70,7 +73,13 @@ func CreateRoutes(engine *gin.Engine, conn *pgx.Conn) {
 			c.JSON(http.StatusInternalServerError, err)
 		}
 
-		c.JSON(http.StatusOK, user)
+		jwtToken, err := createJWT(*user)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+			return
+		}
+
+		c.JSON(http.StatusOK, jwtToken)
 	})
 }
 
@@ -119,7 +128,6 @@ func RegisterUser(conn *pgx.Conn, details RegisterDetails) (*UserDetails, error)
 	`
 
 	var userDetails UserDetails
-	log.Printf("Passworddd ===================== %v", details.Password)
 	err = tx.QueryRow(context.Background(), sqlStatement, details.Username, details.Email, hashPassword(details.Password)).
 		Scan(&userDetails.Id, &userDetails.Username, &userDetails.Email, &userDetails.CreatedAt, &userDetails.UpdatedAt)
 	if err != nil {
@@ -157,6 +165,23 @@ func hashPassword(password string) []byte {
 	return hashedPassword
 }
 
+func createJWT(details UserDetails) (*string, error) {
+	secretKey := []byte(config.String(constants.SecretKey))
+
+	claims := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"user": details,
+		"exp":  time.Now().Add(time.Hour * 24).Unix(),
+	})
+
+	token, err := claims.SignedString(secretKey)
+	if err != nil {
+		log.Printf("Error signing token: %v", err)
+		return nil, err
+	}
+
+	return &token, nil
+}
+
 //User Login:
 //POST /api/login: Authenticate a user and generate a session token.
 //Request body: { "username": "example", "password": "password123" }
@@ -190,3 +215,52 @@ func hashPassword(password string) []byte {
 //POST /api/session/refresh: Refresh an expired session token.
 //Request body: { "refreshToken": "refresh_token_here" }
 //Response: { "success": true, "token": "new_jwt_token_here" }
+
+//func main() {
+//	// Example: Retrieve stored hashed password from database
+//	storedHashedPassword := []byte{
+//		0x71, 0x3b, 0x44, 0x72, 0x8a, 0x64, 0xce, 0x40,
+//		0x5d, 0x16, 0xc2, 0xec, 0xc3, 0x28, 0x02, 0xa2,
+//		0x94, 0xdd, 0x6f, 0x93, 0xf3, 0x23, 0x1d, 0x48,
+//		0xc2, 0x2d, 0x0b, 0x7e, 0x9d, 0x03, 0xd1, 0xf0,
+//		0x2b, 0xff, 0xf1, 0xc7, 0x95, 0x3b, 0xd1, 0x76,
+//		0x33, 0x5c, 0x99, 0xae, 0x4e, 0xd8, 0x36, 0xf4,
+//		0x5a, 0x7a, 0xcd, 0xa2, 0x82, 0x8a, 0x8f, 0x6f,
+//		0xb5, 0x91, 0x78, 0x53, 0xe1, 0x36, 0xe3, 0xee,
+//	}
+//
+//	// Example: User's input password
+//	userInputPassword := "password123"
+//
+//	// Verify password by rehashing the input password with the same salt and parameters
+//	err := verifyPassword(userInputPassword, storedHashedPassword)
+//	if err != nil {
+//		log.Println("Password verification failed:", err)
+//		return
+//	}
+//
+//	fmt.Println("Password verification succeeded!")
+//}
+//
+//// Function to verify password against stored hashed password
+//func verifyPassword(inputPassword string, storedHashedPassword []byte) error {
+//	// Extract parameters and salt from the stored hashed password
+//	var salt [16]byte
+//	copy(salt[:], storedHashedPassword[8:24]) // Extract the first 16 bytes as the salt
+//
+//	// Set the same parameters used for hashing the stored password
+//	timeCost := uint32(1)
+//	memory := uint32(64 * 1024)
+//	parallelism := uint8(4)
+//	keyLength := uint32(len(storedHashedPassword) - 24) // Length of the hash - salt length
+//
+//	// Hash the input password with the extracted salt and same parameters
+//	hashedPassword := argon2.IDKey([]byte(inputPassword), salt[:], timeCost, memory, parallelism, keyLength)
+//
+//	// Compare the generated hash with the stored hashed password
+//	if !bytes.Equal(hashedPassword, storedHashedPassword[24:]) {
+//		return fmt.Errorf("passwords do not match")
+//	}
+//
+//	return nil
+//}
