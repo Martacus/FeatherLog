@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-type RegisterDetails struct {
+type RequestDetails struct {
 	Email    *string `json:"email"`
 	Username *string `json:"username"`
 	Password string  `json:"password"`
@@ -32,14 +32,14 @@ type UserDetails struct {
 func CreateRoutes(engine *gin.Engine, conn *pgx.Conn) {
 	//POST /api/register
 	engine.POST("/auth/register", func(c *gin.Context) {
-		var details RegisterDetails
+		var details RequestDetails
 		if err := c.BindJSON(&details); err != nil {
 			c.JSON(http.StatusInternalServerError, err.Error())
 			return
 		}
 
 		if details.Email == nil && details.Username == nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Need at least one username or on email address"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Need at least a username or an email address"})
 		}
 
 		//Check if email or username exists
@@ -81,12 +81,19 @@ func CreateRoutes(engine *gin.Engine, conn *pgx.Conn) {
 
 		c.JSON(http.StatusOK, jwtToken)
 	})
-}
 
-//User Registration:
-//POST /api/register: Create a new user account.
-//Request body: { "username": "example", "password": "password123", ... }
-//Response: { "success": true, "message": "User registered successfully" }
+	engine.POST("/auth/login", func(c *gin.Context) {
+		var details RequestDetails
+		if err := c.BindJSON(&details); err != nil {
+			c.JSON(http.StatusInternalServerError, err.Error())
+			return
+		}
+
+		if details.Email == nil && details.Username == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Need at least a username or an email address"})
+		}
+	})
+}
 
 // CheckExistingEmail checks if the given email already exists in the database.
 func CheckExistingEmail(conn *pgx.Conn, email string) (bool, error) {
@@ -108,7 +115,7 @@ func CheckExistingUsername(conn *pgx.Conn, username string) (bool, error) {
 	return nameCount > 0, nil
 }
 
-func RegisterUser(conn *pgx.Conn, details RegisterDetails) (*UserDetails, error) {
+func RegisterUser(conn *pgx.Conn, details RequestDetails) (*UserDetails, error) {
 	tx, err := conn.Begin(context.Background())
 	if err != nil {
 		log.Fatalf("Unable to begin transaction: %v", err)
