@@ -46,6 +46,7 @@ func main() {
 				log.Fatalf("Failed to disconnect from Postgres: %v", err)
 			}
 		}(postgresConn, context.Background())
+		database.RunPostgresInitializationScript(postgresConn)
 	}
 
 	//Create a new gin server
