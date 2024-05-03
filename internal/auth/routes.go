@@ -26,24 +26,24 @@ const (
 )
 
 type RequestDetails struct {
-	Email    *string `json:"email"`
-	Username *string `json:"username"`
-	Password string  `json:"password"`
+	Email    string `json:"email"`
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 type UserDetails struct {
-	Id        *string   `json:"id"`
-	Email     *string   `json:"email"`
-	Username  *string   `json:"username"`
+	Id        string    `json:"id"`
+	Email     string    `json:"email"`
+	Username  string    `json:"username"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type UserLoginDetails struct {
-	Id       *string `json:"id"`
-	Email    *string `json:"email"`
-	Username *string `json:"username"`
-	Password []byte  `json:"password"`
+	Id       string `json:"id"`
+	Email    string `json:"email"`
+	Username string `json:"username"`
+	Password []byte `json:"password"`
 }
 
 func CreateRoutes(engine *gin.Engine, conn *pgx.Conn) {
@@ -54,13 +54,13 @@ func CreateRoutes(engine *gin.Engine, conn *pgx.Conn) {
 			return
 		}
 
-		if details.Email == nil && details.Username == nil {
+		if details.Email == "" && details.Username == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Need at least a username or an email address"})
 		}
 
 		//Check if email or username exists
-		if details.Email != nil {
-			exists, err := CheckExistingEmail(conn, *details.Email)
+		if details.Email != "" {
+			exists, err := CheckExistingEmail(conn, details.Email)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err})
 				return
@@ -71,8 +71,8 @@ func CreateRoutes(engine *gin.Engine, conn *pgx.Conn) {
 			}
 		}
 
-		if details.Username != nil {
-			exists, err := CheckExistingUsername(conn, *details.Username)
+		if details.Username != "" {
+			exists, err := CheckExistingUsername(conn, details.Username)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err})
 				return
@@ -108,11 +108,12 @@ func CreateRoutes(engine *gin.Engine, conn *pgx.Conn) {
 			return
 		}
 
-		if details.Email == nil && details.Username == nil {
+		if details.Email == "" && details.Username == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Need at least a username or an email address"})
+			return
 		}
 
-		if details.Email != nil {
+		if details.Email != "" {
 			log.Printf("%v", details.Email)
 			err := conn.QueryRow(context.Background(), `SELECT id, email, username, password FROM "user" where email=$1`, details.Email).
 				Scan(&userDetails.Id, &userDetails.Email, &userDetails.Username, &userDetails.Password)
@@ -142,14 +143,14 @@ func CreateRoutes(engine *gin.Engine, conn *pgx.Conn) {
 			return
 		}
 
-		if details.Email != nil {
-			responseUserDetails, err = RetrieveUserByEmail(conn, *details.Email)
+		if details.Email != "" {
+			responseUserDetails, err = RetrieveUserByEmail(conn, details.Email)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err})
 				return
 			}
 		} else {
-			responseUserDetails, err = RetrieveUserByUsername(conn, *details.Username)
+			responseUserDetails, err = RetrieveUserByUsername(conn, details.Username)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": err})
 				return
