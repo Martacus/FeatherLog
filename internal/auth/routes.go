@@ -1,9 +1,12 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"errors"
+	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gookit/config/v2"
@@ -13,6 +16,13 @@ import (
 	"log"
 	"net/http"
 	"time"
+)
+
+const (
+	timeCost    = uint32(1)
+	memory      = uint32(64 * 1024)
+	parallelism = uint8(4)
+	keyLength   = uint32(32)
 )
 
 type RequestDetails struct {
@@ -29,8 +39,14 @@ type UserDetails struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type UserLoginDetails struct {
+	Id       *string `json:"id"`
+	Email    *string `json:"email"`
+	Username *string `json:"username"`
+	Password []byte  `json:"password"`
+}
+
 func CreateRoutes(engine *gin.Engine, conn *pgx.Conn) {
-	//POST /api/register
 	engine.POST("/auth/register", func(c *gin.Context) {
 		var details RequestDetails
 		if err := c.BindJSON(&details); err != nil {
@@ -84,15 +100,110 @@ func CreateRoutes(engine *gin.Engine, conn *pgx.Conn) {
 
 	engine.POST("/auth/login", func(c *gin.Context) {
 		var details RequestDetails
+		var userDetails UserLoginDetails
+		var responseUserDetails *UserDetails
+
 		if err := c.BindJSON(&details); err != nil {
-			c.JSON(http.StatusInternalServerError, err.Error())
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err})
 			return
 		}
 
 		if details.Email == nil && details.Username == nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Need at least a username or an email address"})
 		}
+
+		if details.Email != nil {
+			log.Printf("%v", details.Email)
+			err := conn.QueryRow(context.Background(), `SELECT id, email, username, password FROM "user" where email=$1`, details.Email).
+				Scan(&userDetails.Id, &userDetails.Email, &userDetails.Username, &userDetails.Password)
+			if err != nil {
+				log.Printf("%v", err)
+				if errors.Is(err, sql.ErrNoRows) {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "account not found"})
+				} else {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+				}
+				return
+			}
+		} else {
+			err := conn.QueryRow(context.Background(), `SELECT * FROM "user" where username=$1`, details.Username).Scan(&userDetails)
+			if err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "account not found"})
+				} else {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+				}
+			}
+		}
+
+		err := verifyPassword(details.Password, userDetails.Password)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err})
+			return
+		}
+
+		if details.Email != nil {
+			responseUserDetails, err = RetrieveUserByEmail(conn, *details.Email)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+				return
+			}
+		} else {
+			responseUserDetails, err = RetrieveUserByUsername(conn, *details.Username)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+				return
+			}
+		}
+
+		jwtToken, err := createJWT(*responseUserDetails)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+			return
+		}
+
+		c.JSON(http.StatusOK, jwtToken)
 	})
+}
+
+func RegisterUser(conn *pgx.Conn, details RequestDetails) (*UserDetails, error) {
+	//Hash the password
+	salt := generateRandomBytes(16)
+	hashedPassword := argon2.IDKey([]byte(details.Password), salt, timeCost, memory, parallelism, keyLength)
+
+	tx, err := conn.Begin(context.Background())
+	if err != nil {
+		log.Fatalf("Unable to begin transaction: %v", err)
+		return nil, err
+	}
+	defer func() {
+		if err := tx.Rollback(context.Background()); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			log.Printf("Error rolling back transaction: %v", err)
+		}
+	}()
+
+	sqlStatement := `
+		INSERT INTO "user" (username, email, password)
+		VALUES ($1, $2, $3)
+		RETURNING id, username, email, created_at, updated_at;
+	`
+
+	var userDetails UserDetails
+	err = tx.QueryRow(context.Background(), sqlStatement, details.Username, details.Email, hashedPassword).
+		Scan(&userDetails.Id, &userDetails.Username, &userDetails.Email, &userDetails.CreatedAt, &userDetails.UpdatedAt)
+	if err != nil {
+		log.Printf("Error inserting new user: %v", err)
+		return nil, err
+	}
+
+	if err := tx.Commit(context.Background()); err != nil {
+		log.Printf("Error committing transaction: %v", err)
+		return nil, err
+	}
+
+	log.Println("User Registered: ")
+
+	return &userDetails, nil
 }
 
 // CheckExistingEmail checks if the given email already exists in the database.
@@ -115,40 +226,21 @@ func CheckExistingUsername(conn *pgx.Conn, username string) (bool, error) {
 	return nameCount > 0, nil
 }
 
-func RegisterUser(conn *pgx.Conn, details RequestDetails) (*UserDetails, error) {
-	tx, err := conn.Begin(context.Background())
-	if err != nil {
-		log.Fatalf("Unable to begin transaction: %v", err)
-		return nil, err
-	}
-	defer func() {
-		// Defer rollback and handle potential rollback error
-		if err := tx.Rollback(context.Background()); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
-			log.Printf("Error rolling back transaction: %v", err)
-		}
-	}()
-
-	sqlStatement := `
-		INSERT INTO "user" (username, email, password)
-		VALUES ($1, $2, $3)
-		RETURNING id, username, email, created_at, updated_at;
-	`
-
+func RetrieveUserByEmail(conn *pgx.Conn, email string) (*UserDetails, error) {
 	var userDetails UserDetails
-	err = tx.QueryRow(context.Background(), sqlStatement, details.Username, details.Email, hashPassword(details.Password)).
-		Scan(&userDetails.Id, &userDetails.Username, &userDetails.Email, &userDetails.CreatedAt, &userDetails.UpdatedAt)
+	err := conn.QueryRow(context.Background(), `SELECT * FROM "user" where email=$1`, email).Scan(&userDetails)
 	if err != nil {
-		log.Printf("Error inserting new user: %v", err)
 		return nil, err
 	}
+	return &userDetails, nil
+}
 
-	if err := tx.Commit(context.Background()); err != nil {
-		log.Printf("Error committing transaction: %v", err)
+func RetrieveUserByUsername(conn *pgx.Conn, username string) (*UserDetails, error) {
+	var userDetails UserDetails
+	err := conn.QueryRow(context.Background(), `SELECT * FROM "user" where username=$1`, username).Scan(&userDetails)
+	if err != nil {
 		return nil, err
 	}
-
-	log.Println("User Registered: ")
-
 	return &userDetails, nil
 }
 
@@ -159,17 +251,6 @@ func generateRandomBytes(length int) []byte {
 		log.Fatal("Error generating random bytes: ", err)
 	}
 	return b
-}
-
-func hashPassword(password string) []byte {
-	salt := generateRandomBytes(16)
-	timeCost := 1
-	memory := 64 * 1024
-	parallelism := 4
-	keyLength := 32
-
-	hashedPassword := argon2.IDKey([]byte(password), salt, uint32(timeCost), uint32(memory), uint8(parallelism), uint32(keyLength))
-	return hashedPassword
 }
 
 func createJWT(details UserDetails) (*string, error) {
@@ -187,6 +268,25 @@ func createJWT(details UserDetails) (*string, error) {
 	}
 
 	return &token, nil
+}
+
+// Function to verify password against stored hashed password
+func verifyPassword(inputPassword string, storedHashedPassword []byte) error {
+	var salt [16]byte
+	copy(salt[:], storedHashedPassword[8:24])
+
+	timeCost := uint32(1)
+	memory := uint32(64 * 1024)
+	parallelism := uint8(4)
+	keyLength := uint32(len(storedHashedPassword) - 24)
+
+	hashedPassword := argon2.IDKey([]byte(inputPassword), salt[:], timeCost, memory, parallelism, keyLength)
+
+	if !bytes.Equal(hashedPassword, storedHashedPassword[24:]) {
+		return fmt.Errorf("passwords do not match")
+	}
+
+	return nil
 }
 
 //User Login:
@@ -240,34 +340,8 @@ func createJWT(details UserDetails) (*string, error) {
 //	userInputPassword := "password123"
 //
 //	// Verify password by rehashing the input password with the same salt and parameters
-//	err := verifyPassword(userInputPassword, storedHashedPassword)
-//	if err != nil {
-//		log.Println("Password verification failed:", err)
-//		return
-//	}
+
 //
 //	fmt.Println("Password verification succeeded!")
 //}
 //
-//// Function to verify password against stored hashed password
-//func verifyPassword(inputPassword string, storedHashedPassword []byte) error {
-//	// Extract parameters and salt from the stored hashed password
-//	var salt [16]byte
-//	copy(salt[:], storedHashedPassword[8:24]) // Extract the first 16 bytes as the salt
-//
-//	// Set the same parameters used for hashing the stored password
-//	timeCost := uint32(1)
-//	memory := uint32(64 * 1024)
-//	parallelism := uint8(4)
-//	keyLength := uint32(len(storedHashedPassword) - 24) // Length of the hash - salt length
-//
-//	// Hash the input password with the extracted salt and same parameters
-//	hashedPassword := argon2.IDKey([]byte(inputPassword), salt[:], timeCost, memory, parallelism, keyLength)
-//
-//	// Compare the generated hash with the stored hashed password
-//	if !bytes.Equal(hashedPassword, storedHashedPassword[24:]) {
-//		return fmt.Errorf("passwords do not match")
-//	}
-//
-//	return nil
-//}
