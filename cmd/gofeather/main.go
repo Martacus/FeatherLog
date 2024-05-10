@@ -59,11 +59,11 @@ func main() {
 		logging.CreateRoutes(server, mongoDB)
 	}
 	if config.Bool(constants.FeatureFlagFeature) {
-		featureflags.CreateRoutes(server, mongoDB)
+		featureflags.Init(server, mongoDB)
 	}
 
 	if config.Bool(constants.AuthFeature) {
-		auth.CreateRoutes(server, postgresConn)
+		auth.Init(server, postgresConn)
 	}
 
 	//Run server after establishing routes

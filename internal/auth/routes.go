@@ -25,149 +25,134 @@ const (
 	keyLength   = uint32(32)
 )
 
-type RequestDetails struct {
-	Email    string `json:"email"`
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
-
 type UserDetails struct {
-	Id        string    `json:"id"`
-	Email     string    `json:"email"`
-	Username  string    `json:"username"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-}
-
-type UserLoginDetails struct {
 	Id       string `json:"id"`
 	Email    string `json:"email"`
 	Username string `json:"username"`
 	Password []byte `json:"password"`
 }
 
-func CreateRoutes(engine *gin.Engine, conn *pgx.Conn) {
-	engine.POST("/auth/register", func(c *gin.Context) {
-		var details RequestDetails
-		if err := c.BindJSON(&details); err != nil {
-			c.JSON(http.StatusInternalServerError, err.Error())
-			return
-		}
-
-		if details.Email == "" && details.Username == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Need at least a username or an email address"})
-		}
-
-		//Check if email or username exists
-		if details.Email != "" {
-			exists, err := CheckExistingEmail(conn, details.Email)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err})
-				return
-			}
-			if exists {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Email address already exists"})
-				return
-			}
-		}
-
-		if details.Username != "" {
-			exists, err := CheckExistingUsername(conn, details.Username)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err})
-				return
-			}
-			if exists {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Username already exists"})
-				return
-			}
-		}
-
-		//Create account in conn
-		user, err := RegisterUser(conn, details)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, err)
-		}
-
-		jwtToken, err := createJWT(*user)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err})
-			return
-		}
-
-		c.JSON(http.StatusOK, jwtToken)
-	})
-
-	engine.POST("/auth/login", func(c *gin.Context) {
-		var details RequestDetails
-		var userDetails UserLoginDetails
-		var responseUserDetails *UserDetails
-
-		if err := c.BindJSON(&details); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err})
-			return
-		}
-
-		if details.Email == "" && details.Username == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Need at least a username or an email address"})
-			return
-		}
-
-		if details.Email != "" {
-			log.Printf("%v", details.Email)
-			err := conn.QueryRow(context.Background(), `SELECT id, email, username, password FROM "user" where email=$1`, details.Email).
-				Scan(&userDetails.Id, &userDetails.Email, &userDetails.Username, &userDetails.Password)
-			if err != nil {
-				log.Printf("%v", err)
-				if errors.Is(err, sql.ErrNoRows) {
-					c.JSON(http.StatusBadRequest, gin.H{"error": "account not found"})
-				} else {
-					c.JSON(http.StatusInternalServerError, gin.H{"error": err})
-				}
-				return
-			}
-		} else {
-			err := conn.QueryRow(context.Background(), `SELECT * FROM "user" where username=$1`, details.Username).Scan(&userDetails)
-			if err != nil {
-				if errors.Is(err, sql.ErrNoRows) {
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "account not found"})
-				} else {
-					c.JSON(http.StatusInternalServerError, gin.H{"error": err})
-				}
-			}
-		}
-
-		err := verifyPassword(details.Password, userDetails.Password)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err})
-			return
-		}
-
-		if details.Email != "" {
-			responseUserDetails, err = RetrieveUserByEmail(conn, details.Email)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err})
-				return
-			}
-		} else {
-			responseUserDetails, err = RetrieveUserByUsername(conn, details.Username)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": err})
-				return
-			}
-		}
-
-		jwtToken, err := createJWT(*responseUserDetails)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err})
-			return
-		}
-
-		c.JSON(http.StatusOK, jwtToken)
-	})
+type RequestDetails struct {
+	Id       string `json:"id"`
+	Email    string `json:"email"`
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
-func RegisterUser(conn *pgx.Conn, details RequestDetails) (*UserDetails, error) {
+var conn *pgx.Conn
+
+func Init(engine *gin.Engine, connection *pgx.Conn) {
+	conn = connection
+
+	engine.POST("/auth/register", register)
+	engine.POST("/auth/login", login)
+}
+
+func register(c *gin.Context) {
+	var details RequestDetails
+	if err := c.BindJSON(&details); err != nil {
+		c.JSON(http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if details.Email == "" && details.Username == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Need at least a username or an email address"})
+	}
+
+	//Check if email or username exists
+	if details.Email != "" {
+		exists, err := CheckExistingEmail(conn, details.Email)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+			return
+		}
+		if exists {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Email address already exists"})
+			return
+		}
+	}
+
+	if details.Username != "" {
+		exists, err := CheckExistingUsername(conn, details.Username)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+			return
+		}
+		if exists {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Username already exists"})
+			return
+		}
+	}
+
+	//Create account in conn
+	user, err := newUser(conn, details)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, err)
+	}
+
+	jwtToken, err := createJWT(*user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+		return
+	}
+
+	c.JSON(http.StatusOK, jwtToken)
+}
+
+func login(c *gin.Context) {
+	var requestDetails RequestDetails
+	var userDetails UserDetails
+
+	if err := c.BindJSON(&requestDetails); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+		return
+	}
+
+	if requestDetails.Email == "" && requestDetails.Username == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Need at least a username or an email address"})
+		return
+	}
+
+	var query string
+	var args []interface{}
+
+	if requestDetails.Email != "" {
+		query = `SELECT id, email, password FROM "user" WHERE email=$1`
+		args = []interface{}{requestDetails.Email}
+
+	} else {
+		query = `SELECT id, email, username, password FROM "user" WHERE username=$1`
+		args = []interface{}{requestDetails.Username}
+	}
+
+	row := conn.QueryRow(context.Background(), query, args...)
+
+	err := row.Scan(&userDetails.Id, &userDetails.Email, &userDetails.Username, &userDetails.Password)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Account not found"})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"errorss": err.Error()})
+		}
+		return
+	}
+
+	err = verifyPassword(requestDetails.Password, userDetails.Password)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err})
+		return
+	}
+
+	jwtToken, err := createJWT(userDetails)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+		return
+	}
+
+	c.JSON(http.StatusOK, jwtToken)
+}
+
+func newUser(conn *pgx.Conn, details RequestDetails) (*UserDetails, error) {
 	//Hash the password
 	salt := generateRandomBytes(16)
 	hashedPassword := argon2.IDKey([]byte(details.Password), salt, timeCost, memory, parallelism, keyLength)
@@ -186,12 +171,12 @@ func RegisterUser(conn *pgx.Conn, details RequestDetails) (*UserDetails, error) 
 	sqlStatement := `
 		INSERT INTO "user" (username, email, password)
 		VALUES ($1, $2, $3)
-		RETURNING id, username, email, created_at, updated_at;
+		RETURNING id, username, email;
 	`
 
 	var userDetails UserDetails
 	err = tx.QueryRow(context.Background(), sqlStatement, details.Username, details.Email, hashedPassword).
-		Scan(&userDetails.Id, &userDetails.Username, &userDetails.Email, &userDetails.CreatedAt, &userDetails.UpdatedAt)
+		Scan(&userDetails.Id, &userDetails.Username, &userDetails.Email)
 	if err != nil {
 		log.Printf("Error inserting new user: %v", err)
 		return nil, err
@@ -227,23 +212,23 @@ func CheckExistingUsername(conn *pgx.Conn, username string) (bool, error) {
 	return nameCount > 0, nil
 }
 
-func RetrieveUserByEmail(conn *pgx.Conn, email string) (*UserDetails, error) {
-	var userDetails UserDetails
-	err := conn.QueryRow(context.Background(), `SELECT * FROM "user" where email=$1`, email).Scan(&userDetails)
-	if err != nil {
-		return nil, err
-	}
-	return &userDetails, nil
-}
-
-func RetrieveUserByUsername(conn *pgx.Conn, username string) (*UserDetails, error) {
-	var userDetails UserDetails
-	err := conn.QueryRow(context.Background(), `SELECT * FROM "user" where username=$1`, username).Scan(&userDetails)
-	if err != nil {
-		return nil, err
-	}
-	return &userDetails, nil
-}
+//func RetrieveUserByEmail(conn *pgx.Conn, email string) (*UserDetails, error) {
+//	var userDetails UserDetails
+//	err := conn.QueryRow(context.Background(), `SELECT * FROM "user" where email=$1`, email).Scan(&userDetails)
+//	if err != nil {
+//		return nil, err
+//	}
+//	return &userDetails, nil
+//}
+//
+//func RetrieveUserByUsername(conn *pgx.Conn, username string) (*UserDetails, error) {
+//	var userDetails UserDetails
+//	err := conn.QueryRow(context.Background(), `SELECT * FROM "user" where username=$1`, username).Scan(&userDetails)
+//	if err != nil {
+//		return nil, err
+//	}
+//	return &userDetails, nil
+//}
 
 func generateRandomBytes(length int) []byte {
 	b := make([]byte, length)
