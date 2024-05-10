@@ -37,24 +37,6 @@ func Init(engine *gin.Engine, connection *pgx.Conn) {
 	engine.POST("/auth/login", authHandler.Login)
 }
 
-//func RetrieveUserByEmail(conn *pgx.Conn, email string) (*UserDetails, error) {
-//	var userDetails UserDetails
-//	err := conn.QueryRow(context.Background(), `SELECT * FROM "user" where email=$1`, email).Scan(&userDetails)
-//	if err != nil {
-//		return nil, err
-//	}
-//	return &userDetails, nil
-//}
-//
-//func RetrieveUserByUsername(conn *pgx.Conn, username string) (*UserDetails, error) {
-//	var userDetails UserDetails
-//	err := conn.QueryRow(context.Background(), `SELECT * FROM "user" where username=$1`, username).Scan(&userDetails)
-//	if err != nil {
-//		return nil, err
-//	}
-//	return &userDetails, nil
-//}
-
 //User Login:
 //POST /api/login: Authenticate a user and generate a session token.
 //Request body: { "username": "example", "password": "password123" }
