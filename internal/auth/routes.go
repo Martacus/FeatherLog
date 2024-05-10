@@ -29,8 +29,6 @@ type RequestDetails struct {
 func Init(engine *gin.Engine, connection *pgx.Conn) {
 
 	userRepo := NewUserAuthService(connection)
-
-	// Create authentication handler with repository dependency
 	authHandler := NewAuthHandler(userRepo)
 
 	engine.POST("/auth/register", authHandler.Register)
