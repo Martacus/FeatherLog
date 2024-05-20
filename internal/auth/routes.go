@@ -35,12 +35,6 @@ func Init(engine *gin.Engine, connection *pgx.Conn) {
 	engine.POST("/auth/login", authHandler.Login)
 }
 
-//User Login:
-//POST /api/login: Authenticate a user and generate a session token.
-//Request body: { "username": "example", "password": "password123" }
-//Response (successful): { "success": true, "token": "jwt_token_here" }
-//Response (failed): { "success": false, "message": "Invalid credentials" }
-
 //User Logout (Optional, if using JWT or session-based tokens):
 //POST /api/logout: Log out the currently authenticated user.
 //Response: { "success": true, "message": "User logged out successfully" }

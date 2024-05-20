@@ -2,7 +2,9 @@ package auth
 
 import (
 	"bytes"
+	"crypto/rand"
 	"database/sql"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"github.com/gin-gonic/gin"
@@ -71,7 +73,13 @@ func (h *Handler) Register(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, jwtToken)
+	refreshToken, err := generateRefreshToken()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"token": jwtToken, "refresh_token": refreshToken})
 }
 
 func (h *Handler) Login(c *gin.Context) {
@@ -138,6 +146,18 @@ func createJWT(details UserDetails) (*string, error) {
 	return &token, nil
 }
 
+func generateRefreshToken() (string, error) {
+	token := make([]byte, 32)
+	_, err := rand.Read(token)
+	if err != nil {
+		return "", err
+	}
+
+	// Encode token as base64 string
+	encodedToken := base64.StdEncoding.EncodeToString(token)
+	return encodedToken, nil
+}
+
 // Function to verify password against stored hashed password
 func verifyPassword(inputPassword string, storedHashedPassword []byte) error {
 	var salt [16]byte
@@ -151,7 +171,7 @@ func verifyPassword(inputPassword string, storedHashedPassword []byte) error {
 	hashedPassword := argon2.IDKey([]byte(inputPassword), salt[:], timeCost, memory, parallelism, keyLength)
 
 	if !bytes.Equal(hashedPassword, storedHashedPassword[24:]) {
-		return fmt.Errorf("passwords do not match")
+		return fmt.Errorf("invalid credentials")
 	}
 
 	return nil
