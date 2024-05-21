@@ -86,7 +86,12 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"token": jwtToken, "refresh_token": refreshToken})
+	c.JSON(http.StatusOK, gin.H{
+		"access_token":  jwtToken,
+		"refresh_token": refreshToken,
+		"expires_in":    3600,
+		"token_type":    "Bearer",
+	})
 }
 
 func (h *AuthHandler) Login(c *gin.Context) {
@@ -133,7 +138,33 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, jwtToken)
+	refreshToken, err := generateRefreshToken()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+		return
+	}
+
+	_, err = h.sessionRepo.SaveSession(userDetails.Id, *jwtToken, refreshToken, time.Now().Add(1*time.Hour))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"access_token":  jwtToken,
+		"refresh_token": refreshToken,
+		"expires_in":    3600,
+		"token_type":    "Bearer ",
+	})
+}
+
+func (h *AuthHandler) RefreshAccessToken(c *gin.Context) {
+	var requestBody TokenRefreshRequest
+	if err := c.BindJSON(&requestBody); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+		return
+	}
+
 }
 
 func createJWT(details UserDetails) (*string, error) {

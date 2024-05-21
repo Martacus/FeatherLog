@@ -54,3 +54,28 @@ func RunPostgresInitializationScript(conn *pgx.Conn) {
 
 	log.Println("init.sql script executed successfully")
 }
+
+func ExecuteTransaction(conn *pgx.Conn, ctx context.Context, fn func(tx pgx.Tx) (interface{}, error)) (interface{}, error) {
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		log.Printf("Unable to begin transaction: %v", err)
+		return nil, err
+	}
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			log.Printf("Error rolling back transaction: %v", err)
+		}
+	}()
+
+	result, err := fn(tx)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		log.Printf("Error committing transaction: %v", err)
+		return "", err
+	}
+
+	return result, nil
+}

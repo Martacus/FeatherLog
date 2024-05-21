@@ -20,6 +20,7 @@ func Init(engine *gin.Engine, connection *pgx.Conn) {
 
 	engine.POST("/auth/register", authHandler.Register)
 	engine.POST("/auth/login", authHandler.Login)
+	engine.POST("/auth/refresh", authHandler.RefreshAccessToken)
 }
 
 //User Logout (Optional, if using JWT or session-based tokens):
