@@ -10,5 +10,5 @@ const (
 	FeatureFlagFeature = "feature_flags"
 	AuthFeature        = "auth"
 	SecretKey          = "secret_key"
-	DatabaseType       = "db_type"
+	JWTIssuer          = "jwt-iss"
 )

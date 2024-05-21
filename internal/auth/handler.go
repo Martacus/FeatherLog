@@ -17,28 +17,29 @@ import (
 	"time"
 )
 
-type Handler struct {
-	userRepo UserRepository
+type AuthHandler struct {
+	userRepo    UserRepository
+	sessionRepo SessionRepository
 }
 
-func NewAuthHandler(userRepo UserRepository) *Handler {
-	return &Handler{userRepo: userRepo}
+func NewAuthHandler(userRepo UserRepository, sessionRepo SessionRepository) *AuthHandler {
+	return &AuthHandler{userRepo: userRepo, sessionRepo: sessionRepo}
 }
 
-func (h *Handler) Register(c *gin.Context) {
-	var details RequestDetails
-	if err := c.BindJSON(&details); err != nil {
+func (h *AuthHandler) Register(c *gin.Context) {
+	var requestDetails RequestDetails
+	if err := c.BindJSON(&requestDetails); err != nil {
 		c.JSON(http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	if details.Email == "" && details.Username == "" {
+	if requestDetails.Email == "" && requestDetails.Username == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Need at least a username or an email address"})
 	}
 
 	//Check if email or username exists
-	if details.Email != "" {
-		exists, err := h.userRepo.CheckExistingEmail(details.Email)
+	if requestDetails.Email != "" {
+		exists, err := h.userRepo.CheckExistingEmail(requestDetails.Email)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err})
 			return
@@ -49,8 +50,8 @@ func (h *Handler) Register(c *gin.Context) {
 		}
 	}
 
-	if details.Username != "" {
-		exists, err := h.userRepo.CheckExistingUsername(details.Username)
+	if requestDetails.Username != "" {
+		exists, err := h.userRepo.CheckExistingUsername(requestDetails.Username)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err})
 			return
@@ -62,7 +63,7 @@ func (h *Handler) Register(c *gin.Context) {
 	}
 
 	//Create account in conn
-	user, err := h.userRepo.CreateUser(details)
+	user, err := h.userRepo.CreateUser(requestDetails)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, err)
 	}
@@ -79,10 +80,16 @@ func (h *Handler) Register(c *gin.Context) {
 		return
 	}
 
+	_, err = h.sessionRepo.SaveSession(user.Id, *jwtToken, refreshToken, time.Now().Add(1*time.Hour))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{"token": jwtToken, "refresh_token": refreshToken})
 }
 
-func (h *Handler) Login(c *gin.Context) {
+func (h *AuthHandler) Login(c *gin.Context) {
 	var requestDetails RequestDetails
 
 	if err := c.BindJSON(&requestDetails); err != nil {
@@ -133,8 +140,11 @@ func createJWT(details UserDetails) (*string, error) {
 	secretKey := []byte(config.String(constants.SecretKey))
 
 	claims := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"iss":  config.String(constants.JWTIssuer),
+		"sub":  details.Id,
 		"user": details,
 		"exp":  time.Now().Add(time.Hour * 24).Unix(),
+		"iat":  time.Now().Unix(),
 	})
 
 	token, err := claims.SignedString(secretKey)

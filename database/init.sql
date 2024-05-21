@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS "sessions"
 (
     session_id    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id       UUID UNIQUE,
-    token         VARCHAR(255),
+    token         TEXT,
     refresh_token VARCHAR(255),
     expiry        TIMESTAMP
 );

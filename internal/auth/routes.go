@@ -12,24 +12,11 @@ const (
 	keyLength   = uint32(32)
 )
 
-type UserDetails struct {
-	Id       string `json:"id"`
-	Email    string `json:"email"`
-	Username string `json:"username"`
-	Password []byte `json:"password"`
-}
-
-type RequestDetails struct {
-	Id       string `json:"id"`
-	Email    string `json:"email"`
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
-
 func Init(engine *gin.Engine, connection *pgx.Conn) {
 
 	userRepo := NewUserAuthService(connection)
-	authHandler := NewAuthHandler(userRepo)
+	sessionRepo := NewSessionService(connection)
+	authHandler := NewAuthHandler(userRepo, sessionRepo)
 
 	engine.POST("/auth/register", authHandler.Register)
 	engine.POST("/auth/login", authHandler.Login)
