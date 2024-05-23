@@ -98,7 +98,7 @@ func (h *AuthenticationHandler) Login(c *gin.Context) {
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Account not found"})
+			utility.RespondWithError(c, http.StatusNotFound, "Account not found")
 		} else {
 			utility.RespondWithError(c, http.StatusInternalServerError, err.Error())
 		}
