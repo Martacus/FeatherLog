@@ -12,6 +12,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gookit/config/v2"
 	"gofeather/internal/constants"
+	"gofeather/internal/utility"
 	"golang.org/x/crypto/argon2"
 	"log"
 	"net/http"
@@ -30,23 +31,23 @@ func NewAuthHandler(userRepo UserRepository, sessionRepo SessionRepository) *Aut
 func (h *AuthenticationHandler) Register(c *gin.Context) {
 	var requestDetails RequestDetails
 	if err := c.BindJSON(&requestDetails); err != nil {
-		c.JSON(http.StatusInternalServerError, err.Error())
+		utility.RespondWithError(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	if requestDetails.Email == "" && requestDetails.Username == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Need at least a username or an email address"})
+		utility.RespondWithError(c, http.StatusBadRequest, "need at least a username or an email address")
 	}
 
 	//Check if email or username exists
 	if requestDetails.Email != "" {
 		exists, err := h.userRepo.CheckExistingEmail(requestDetails.Email)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+			utility.RespondWithError(c, http.StatusInternalServerError, err.Error())
 			return
 		}
 		if exists {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Email address already exists"})
+			utility.RespondWithError(c, http.StatusBadRequest, "Email address already exists")
 			return
 		}
 	}
@@ -54,11 +55,11 @@ func (h *AuthenticationHandler) Register(c *gin.Context) {
 	if requestDetails.Username != "" {
 		exists, err := h.userRepo.CheckExistingUsername(requestDetails.Username)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+			utility.RespondWithError(c, http.StatusInternalServerError, err.Error())
 			return
 		}
 		if exists {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Username already exists"})
+			utility.RespondWithError(c, http.StatusBadRequest, "Username already exists")
 			return
 		}
 	}
@@ -66,7 +67,7 @@ func (h *AuthenticationHandler) Register(c *gin.Context) {
 	//Create account in conn
 	user, err := h.userRepo.CreateUser(requestDetails)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, err)
+		utility.RespondWithError(c, http.StatusInternalServerError, err.Error())
 	}
 
 	h.generateAndSaveTokens(c, *user)
@@ -76,12 +77,12 @@ func (h *AuthenticationHandler) Login(c *gin.Context) {
 	var requestDetails RequestDetails
 
 	if err := c.BindJSON(&requestDetails); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+		utility.RespondWithError(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	if requestDetails.Email == "" && requestDetails.Username == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Need at least a username or an email address"})
+		utility.RespondWithError(c, http.StatusBadRequest, "Need at least a username or an email address")
 		return
 	}
 
@@ -99,14 +100,14 @@ func (h *AuthenticationHandler) Login(c *gin.Context) {
 		if errors.Is(err, sql.ErrNoRows) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Account not found"})
 		} else {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			utility.RespondWithError(c, http.StatusInternalServerError, err.Error())
 		}
 		return
 	}
 
 	err = verifyPassword(requestDetails.Password, userDetails.Password)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err})
+		utility.RespondWithError(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -120,14 +121,14 @@ func (h *AuthenticationHandler) RefreshAccessToken(c *gin.Context) {
 
 	var requestBody TokenRefreshRequest
 	if err := c.BindJSON(&requestBody); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+		utility.RespondWithError(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	session, err := h.sessionRepo.GetSessionByRefreshToken(ctx, requestBody.RefreshToken)
 	if err != nil {
 		log.Printf("Unable to find session for refresh token: %v", requestBody.RefreshToken)
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Errorf("session not found")})
+		utility.RespondWithError(c, http.StatusBadRequest, "session not found")
 	}
 
 	token, err := jwt.Parse(session.Token, func(token *jwt.Token) (interface{}, error) {
@@ -135,7 +136,7 @@ func (h *AuthenticationHandler) RefreshAccessToken(c *gin.Context) {
 	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
 	if err != nil {
 		log.Printf("error parsing token for session: %v", err)
-		c.JSON(http.StatusInternalServerError, fmt.Errorf("session token could not be parsed"))
+		utility.RespondWithError(c, http.StatusInternalServerError, "session token could not be parsed")
 	}
 
 	var userDetails UserDetails
@@ -146,7 +147,7 @@ func (h *AuthenticationHandler) RefreshAccessToken(c *gin.Context) {
 			userDetails.Id = id
 		} else {
 			log.Printf("user claim invalid")
-			c.JSON(http.StatusBadRequest, fmt.Errorf("claims could not be validated"))
+			utility.RespondWithError(c, http.StatusBadRequest, "claims could not be validated")
 		}
 	}
 
@@ -208,19 +209,19 @@ func verifyPassword(inputPassword string, storedHashedPassword []byte) error {
 func (h *AuthenticationHandler) generateAndSaveTokens(c *gin.Context, user UserDetails) {
 	jwtToken, err := createJWT(user)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error creating JWT"})
+		utility.RespondWithError(c, http.StatusInternalServerError, "Error creating JWT")
 		return
 	}
 
 	refreshToken, err := generateRefreshToken()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error generating refresh token"})
+		utility.RespondWithError(c, http.StatusInternalServerError, "Error generating refresh token")
 		return
 	}
 
 	_, err = h.sessionRepo.SaveSession(user.Id, *jwtToken, refreshToken, time.Now().Add(1*time.Hour))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Error saving session"})
+		utility.RespondWithError(c, http.StatusInternalServerError, "Error saving session")
 		return
 	}
 
