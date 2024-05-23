@@ -11,7 +11,8 @@ import (
 
 type SessionRepository interface {
 	SaveSession(userID string, token string, refreshToken string, expiry time.Time) (string, error)
-	RefreshSession(ctx context.Context, refreshToken string) error
+	RefreshSession(ctx context.Context, refreshToken string) (string, error)
+	GetSessionByRefreshToken(ctx context.Context, tokenString string) (*Session, error)
 }
 
 type SessionService struct {
@@ -54,26 +55,12 @@ func (s *SessionService) SaveSession(userID string, token string, refreshToken s
 	return sessionId.(string), nil
 }
 
-func (s *SessionService) RefreshSession(ctx context.Context, refreshToken string) error {
-	//Retrieve the session via refresh token
-	session, err := s.getSessionByRefreshToken(ctx, refreshToken)
-	if err != nil {
-		log.Printf("Unable to find session for refresh token: %v", refreshToken)
-		return err
-	}
-
-	//Grab user by ID from session
-	//Create new JWT with details
-	//Save to database
-	//Refresh session with token done
-	//Return new session object
-	_ = session
-
+func (s *SessionService) RefreshSession(ctx context.Context, tokenString string) (string, error) {
 	//Generate new refresh token
 	newRefreshToken, err := generateRefreshToken()
 	if err != nil {
 		log.Printf("Unable to generate refresh token: %v", err)
-		return err
+		return "", err
 	}
 
 	//Update the session
@@ -84,20 +71,23 @@ func (s *SessionService) RefreshSession(ctx context.Context, refreshToken string
 			WHERE refresh_token = $4
 		`
 
-		_, err = tx.Exec(ctx, sqlStatement, "", time.Now().Add(1*time.Hour), newRefreshToken)
+		_, err = tx.Exec(ctx, sqlStatement, tokenString, time.Now().Add(1*time.Hour), newRefreshToken)
 		if err != nil {
 			log.Printf("Error updating session: %v", err)
 			return nil, err
 		}
 		return nil, nil
 	})
+	if err != nil {
+		log.Printf("Unable to execute transaction: %v", err)
+		return "", err
+	}
 
 	log.Printf("Session updated successfully")
-	return nil
+	return newRefreshToken, nil
 }
 
-func (s *SessionService) getSessionByRefreshToken(ctx context.Context, refreshToken string) (*Session, error) {
-	//Retrieve the session via refresh token
+func (s *SessionService) GetSessionByRefreshToken(ctx context.Context, refreshToken string) (*Session, error) {
 	session, err := database.ExecuteTransaction(s.conn, ctx, func(tx pgx.Tx) (interface{}, error) {
 		var session Session
 		getSessionQuery := `SELECT user_id, token, refresh_token, expiry FROM "sessions" WHERE refresh_token=$1`

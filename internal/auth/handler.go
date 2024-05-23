@@ -2,6 +2,7 @@ package auth
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/base64"
@@ -17,16 +18,16 @@ import (
 	"time"
 )
 
-type AuthHandler struct {
+type AuthenticationHandler struct {
 	userRepo    UserRepository
 	sessionRepo SessionRepository
 }
 
-func NewAuthHandler(userRepo UserRepository, sessionRepo SessionRepository) *AuthHandler {
-	return &AuthHandler{userRepo: userRepo, sessionRepo: sessionRepo}
+func NewAuthHandler(userRepo UserRepository, sessionRepo SessionRepository) *AuthenticationHandler {
+	return &AuthenticationHandler{userRepo: userRepo, sessionRepo: sessionRepo}
 }
 
-func (h *AuthHandler) Register(c *gin.Context) {
+func (h *AuthenticationHandler) Register(c *gin.Context) {
 	var requestDetails RequestDetails
 	if err := c.BindJSON(&requestDetails); err != nil {
 		c.JSON(http.StatusInternalServerError, err.Error())
@@ -94,7 +95,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	})
 }
 
-func (h *AuthHandler) Login(c *gin.Context) {
+func (h *AuthenticationHandler) Login(c *gin.Context) {
 	var requestDetails RequestDetails
 
 	if err := c.BindJSON(&requestDetails); err != nil {
@@ -158,13 +159,61 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	})
 }
 
-func (h *AuthHandler) RefreshAccessToken(c *gin.Context) {
+func (h *AuthenticationHandler) RefreshAccessToken(c *gin.Context) {
+	ctx, cancel := context.WithTimeoutCause(context.Background(), 10*time.Second, fmt.Errorf(
+		"refresh access token endpoint timed out"))
+	defer cancel()
+
 	var requestBody TokenRefreshRequest
 	if err := c.BindJSON(&requestBody); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
 		return
 	}
 
+	session, err := h.sessionRepo.GetSessionByRefreshToken(ctx, requestBody.RefreshToken)
+	if err != nil {
+		log.Printf("Unable to find session for refresh token: %v", requestBody.RefreshToken)
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Errorf("session not found")})
+	}
+
+	token, err := jwt.Parse(session.Token, func(token *jwt.Token) (interface{}, error) {
+		return []byte(config.String(constants.SecretKey)), nil
+	}, jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}))
+	if err != nil {
+		log.Printf("error parsing token for session: %v", err)
+		c.JSON(http.StatusInternalServerError, fmt.Errorf("session token could not be parsed"))
+	}
+
+	var userDetails UserDetails
+	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+		userMap := claims["user"].(map[string]interface{})
+
+		if id, ok := userMap["id"].(string); ok {
+			userDetails.Id = id
+		} else {
+			log.Printf("user claim invalid")
+			c.JSON(http.StatusBadRequest, fmt.Errorf("claims could not be validated"))
+		}
+	}
+
+	jwtToken, err := createJWT(userDetails)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+		return
+	}
+
+	refreshToken, err := h.sessionRepo.RefreshSession(ctx, *jwtToken)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"access_token":  jwtToken,
+		"refresh_token": refreshToken,
+		"expires_in":    3600,
+		"token_type":    "Bearer ",
+	})
 }
 
 func createJWT(details UserDetails) (*string, error) {
@@ -176,6 +225,7 @@ func createJWT(details UserDetails) (*string, error) {
 		"user": details,
 		"exp":  time.Now().Add(time.Hour * 24).Unix(),
 		"iat":  time.Now().Unix(),
+		"alg":  jwt.SigningMethodHS256.Alg(),
 	})
 
 	token, err := claims.SignedString(secretKey)
