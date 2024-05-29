@@ -158,7 +158,7 @@ func (h *AuthenticationHandler) RefreshAccessToken(c *gin.Context) {
 		return
 	}
 
-	session, err := h.sessionRepo.GetSessionByRefreshToken(ctx, requestBody.RefreshToken)
+	session, err := h.sessionRepo.getSessionByRefreshToken(ctx, requestBody.RefreshToken)
 	if err != nil {
 		log.Printf("Unable to find session for refresh token: %v", requestBody.RefreshToken)
 		utility.RespondWithError(c, http.StatusBadRequest, "session not found")
@@ -252,7 +252,7 @@ func (h *AuthenticationHandler) generateAndSaveTokens(c *gin.Context, user UserD
 		return
 	}
 
-	_, err = h.sessionRepo.SaveSession(user.Id, *jwtToken, refreshToken, time.Now().Add(1*time.Hour))
+	_, err = h.sessionRepo.saveSession(user.Id, *jwtToken, refreshToken, time.Now().Add(1*time.Hour))
 	if err != nil {
 		utility.RespondWithError(c, http.StatusInternalServerError, "Error saving session")
 		return
