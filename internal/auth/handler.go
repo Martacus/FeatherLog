@@ -51,7 +51,6 @@ func (h *AuthenticationHandler) Register(c *gin.Context) {
 		utility.RespondWithError(c, http.StatusBadRequest, "need at least a username or an email address")
 	}
 
-	//Check if email or username exists
 	if requestDetails.Email != "" {
 		exists, err := h.userRepo.CheckExistingEmail(requestDetails.Email)
 		if err != nil {
@@ -76,7 +75,6 @@ func (h *AuthenticationHandler) Register(c *gin.Context) {
 		}
 	}
 
-	//Create account in conn
 	user, err := h.userRepo.CreateUser(requestDetails)
 	if err != nil {
 		utility.RespondWithError(c, http.StatusInternalServerError, err.Error())
@@ -113,7 +111,6 @@ func (h *AuthenticationHandler) Login(c *gin.Context) {
 	var userDetails *UserDetails
 	var err error
 
-	// Retrieve user details by email or username
 	if requestDetails.Email != "" {
 		userDetails, err = h.userRepo.GetUserByEmail(requestDetails.Email)
 	} else {
