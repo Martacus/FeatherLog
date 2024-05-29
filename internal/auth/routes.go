@@ -3,6 +3,7 @@ package auth
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
+	_ "gofeather/docs"
 )
 
 const (

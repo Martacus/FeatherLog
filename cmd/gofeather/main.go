@@ -7,6 +7,8 @@ import (
 	"github.com/gookit/config/v2/yaml"
 	"github.com/jackc/pgx/v5"
 	_ "github.com/lib/pq"
+	"github.com/swaggo/files"
+	"github.com/swaggo/gin-swagger"
 	"go.mongodb.org/mongo-driver/mongo"
 	"gofeather/internal/auth"
 	"gofeather/internal/constants"
@@ -17,6 +19,15 @@ import (
 	"time"
 )
 
+//	@title			GoFeather API
+//	@version		0.1
+//	@description	This is the api docs for the featherlog application, it will show all routes, even the disabled ones.
+//	@termsOfService	http://swagger.io/terms/
+
+//	@license.name	Apache 2.0
+//	@license.url	http://www.apache.org/licenses/LICENSE-2.0.html
+
+// @host	localhost:*
 func main() {
 	err := loadConfig()
 	if err != nil {
@@ -65,6 +76,9 @@ func main() {
 	if config.Bool(constants.AuthFeature) {
 		auth.Init(server, postgresConn)
 	}
+
+	//Setup swagger route
+	server.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	//Run server after establishing routes
 	runErr := server.Run()

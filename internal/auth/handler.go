@@ -28,6 +28,18 @@ func NewAuthHandler(userRepo UserRepository, sessionRepo SessionRepository) *Aut
 	return &AuthenticationHandler{userRepo: userRepo, sessionRepo: sessionRepo}
 }
 
+// Register godoc
+//
+//	@Summary		Register an account
+//	@Description	Register a user account
+//	@Tags			Authentication
+//	@Accept			json
+//	@Produce		json
+//	@Param			user_details	body		RequestDetails	true	"Refresh token"
+//	@Success		200		{object}	AuthenticationResponse
+//	@Failure		400		{object}	error
+//	@Failure		500		{object}	error
+//	@Router			/auth/register [post]
 func (h *AuthenticationHandler) Register(c *gin.Context) {
 	var requestDetails RequestDetails
 	if err := c.BindJSON(&requestDetails); err != nil {
@@ -73,6 +85,18 @@ func (h *AuthenticationHandler) Register(c *gin.Context) {
 	h.generateAndSaveTokens(c, *user)
 }
 
+// Login godoc
+//
+//	@Summary		Login with user details
+//	@Description	Logs a user in with their user details
+//	@Tags			Authentication
+//	@Accept			json
+//	@Produce		json
+//	@Param			user_details	body		RequestDetails	true	"Email or Username with a password"
+//	@Success		200	{object}	AuthenticationResponse
+//	@Failure		400	{object}	error
+//	@Failure		500	{object}	error
+//	@Router			/auth/login [post]
 func (h *AuthenticationHandler) Login(c *gin.Context) {
 	var requestDetails RequestDetails
 
@@ -114,6 +138,18 @@ func (h *AuthenticationHandler) Login(c *gin.Context) {
 	h.generateAndSaveTokens(c, *userDetails)
 }
 
+// RefreshAccessToken godoc
+//
+//	@Summary		Refresh your access_token
+//	@Description	This route allows a user to refresh their access token with their refresh_token
+//	@Tags			Authentication
+//	@Accept			json
+//	@Produce		json
+//	@Param			request_details	body		TokenRefreshRequest	true	"Email or Username with a password"
+//	@Success		200	{object}	AuthenticationResponse
+//	@Failure		400	{object}	error
+//	@Failure		500	{object}	error
+//	@Router			/auth/refresh [post]
 func (h *AuthenticationHandler) RefreshAccessToken(c *gin.Context) {
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 10*time.Second, fmt.Errorf(
 		"refresh access token endpoint timed out"))
@@ -225,10 +261,10 @@ func (h *AuthenticationHandler) generateAndSaveTokens(c *gin.Context, user UserD
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"access_token":  jwtToken,
-		"refresh_token": refreshToken,
-		"expires_in":    3600,
-		"token_type":    "Bearer",
+	c.JSON(http.StatusOK, &AuthenticationResponse{
+		AccessToken:  *jwtToken,
+		RefreshToken: refreshToken,
+		ExpiresIn:    3600,
+		TokenType:    "Bearer",
 	})
 }

@@ -1,0 +1,124 @@
+definitions:
+  auth.AuthenticationResponse:
+    properties:
+      access_token:
+        type: string
+      expires_in:
+        type: integer
+      refresh_token:
+        type: string
+      token_type:
+        type: string
+    type: object
+  auth.RequestDetails:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+      username:
+        type: string
+    type: object
+  auth.TokenRefreshRequest:
+    properties:
+      refresh_token:
+        type: string
+    type: object
+host: localhost:*
+info:
+  contact: {}
+  description: This is the api docs for the featherlog application, it will show all
+    routes, even the disabled ones.
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  termsOfService: http://swagger.io/terms/
+  title: GoFeather API
+  version: "0.1"
+paths:
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Logs a user in with their user details
+      parameters:
+      - description: Email or Username with a password
+        in: body
+        name: user_details
+        required: true
+        schema:
+          $ref: '#/definitions/auth.RequestDetails'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.AuthenticationResponse'
+        "400":
+          description: Bad Request
+          schema: {}
+        "500":
+          description: Internal Server Error
+          schema: {}
+      summary: Login with user details
+      tags:
+      - Authentication
+  /auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: This route allows a user to refresh their access token with their
+        refresh_token
+      parameters:
+      - description: Email or Username with a password
+        in: body
+        name: request_details
+        required: true
+        schema:
+          $ref: '#/definitions/auth.TokenRefreshRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.AuthenticationResponse'
+        "400":
+          description: Bad Request
+          schema: {}
+        "500":
+          description: Internal Server Error
+          schema: {}
+      summary: Refresh your access_token
+      tags:
+      - Authentication
+  /auth/register:
+    post:
+      consumes:
+      - application/json
+      description: Register a user account
+      parameters:
+      - description: Refresh token
+        in: body
+        name: user_details
+        required: true
+        schema:
+          $ref: '#/definitions/auth.RequestDetails'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.AuthenticationResponse'
+        "400":
+          description: Bad Request
+          schema: {}
+        "500":
+          description: Internal Server Error
+          schema: {}
+      summary: Register an account
+      tags:
+      - Authentication
+swagger: "2.0"
