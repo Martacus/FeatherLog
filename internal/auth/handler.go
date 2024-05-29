@@ -160,8 +160,8 @@ func (h *AuthenticationHandler) RefreshAccessToken(c *gin.Context) {
 
 	session, err := h.sessionRepo.getSessionByRefreshToken(ctx, requestBody.RefreshToken)
 	if err != nil {
-		log.Printf("Unable to find session for refresh token: %v", requestBody.RefreshToken)
 		utility.RespondWithError(c, http.StatusBadRequest, "session not found")
+		return
 	}
 
 	token, err := jwt.Parse(session.Token, func(token *jwt.Token) (interface{}, error) {
@@ -170,6 +170,7 @@ func (h *AuthenticationHandler) RefreshAccessToken(c *gin.Context) {
 	if err != nil {
 		log.Printf("error parsing token for session: %v", err)
 		utility.RespondWithError(c, http.StatusInternalServerError, "session token could not be parsed")
+		return
 	}
 
 	var userDetails UserDetails
@@ -181,6 +182,7 @@ func (h *AuthenticationHandler) RefreshAccessToken(c *gin.Context) {
 		} else {
 			log.Printf("user claim invalid")
 			utility.RespondWithError(c, http.StatusBadRequest, "claims could not be validated")
+			return
 		}
 	}
 

@@ -83,13 +83,11 @@ func (s *SessionService) getSessionByRefreshToken(ctx context.Context, refreshTo
 	session, err := database.ExecuteTransaction(s.conn, ctx, func(tx pgx.Tx) (interface{}, error) {
 		var session Session
 		getSessionQuery := `SELECT user_id, token, refresh_token, expiry FROM "sessions" WHERE refresh_token=$1`
-
-		getSessionRow := tx.QueryRow(ctx, getSessionQuery, refreshToken)
-		err := getSessionRow.Scan(&session.UserID, session.Token, session.RefreshToken, session.Expiry)
+		err := tx.QueryRow(ctx, getSessionQuery, refreshToken).Scan(&session.UserID, &session.Token, &session.RefreshToken, &session.Expiry)
 		if err != nil {
 			return nil, err
 		}
-		return session, nil
+		return &session, nil
 	})
 
 	if err != nil {
