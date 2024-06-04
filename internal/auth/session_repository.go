@@ -12,6 +12,7 @@ type SessionRepository interface {
 	saveSession(userID string, token string, refreshToken string, expiry time.Time) (string, error)
 	refreshSession(ctx context.Context, refreshToken string) (string, error)
 	getSessionByRefreshToken(ctx context.Context, tokenString string) (*Session, error)
+	removeSessionByToken(ctx context.Context, token string) error
 }
 
 type SessionService struct {
@@ -95,4 +96,20 @@ func (s *SessionService) getSessionByRefreshToken(ctx context.Context, refreshTo
 	}
 
 	return session.(*Session), nil
+}
+
+func (s *SessionService) removeSessionByToken(ctx context.Context, token string) error {
+	_, err := database.ExecuteTransaction(s.conn, ctx, func(tx pgx.Tx) (interface{}, error) {
+		query := `DELETE FROM "sessions" WHERE token=$1`
+		_, err := tx.Exec(ctx, query, token)
+		if err != nil {
+			return nil, err
+		}
+		return nil, nil
+	})
+
+	if err != nil {
+		return err
+	}
+	return nil
 }

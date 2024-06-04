@@ -22,19 +22,9 @@ func Init(engine *gin.Engine, connection *pgx.Conn) {
 	engine.POST("/auth/register", authHandler.Register)
 	engine.POST("/auth/login", authHandler.Login)
 	engine.POST("/auth/refresh", authHandler.RefreshAccessToken)
+	engine.POST("/auth/logout", authHandler.Logout)
 }
 
 //User Logout (Optional, if using JWT or session-based tokens):
 //POST /api/logout: Log out the currently authenticated user.
 //Response: { "success": true, "message": "User logged out successfully" }
-
-//User Profile (Optional):
-//GET /api/profile: Retrieve user profile information.
-//Response: { "username": "example", "email": "user@example.com", ... }
-//PUT /api/profile: Update user profile information.
-//Request body: { "email": "new_email@example.com", ... }
-//Response: { "success": true, "message": "Profile updated successfully" }
-
-//User Deletion (Optional):
-//DELETE /api/profile: Delete user account.
-//Response: { "success": true, "message": "User account deleted" }

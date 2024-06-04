@@ -189,6 +189,38 @@ func (h *AuthenticationHandler) RefreshAccessToken(c *gin.Context) {
 	h.generateAndSaveTokens(c, userDetails)
 }
 
+// Logout godoc
+//
+//	@Summary		Logout for a user
+//	@Description	This route allows a user to logout from their account, removing the stored session from the db
+//	@Tags			Authentication
+//	@Accept			json
+//	@Produce		json
+//	@Param			request_details	body		LogoutRequest	true	"jwt token"
+//	@Success		200	{string}	string "ok"
+//	@Failure		400	{object}	error
+//	@Failure		500	{object}	error
+//	@Router			/auth/refresh [post]
+func (h *AuthenticationHandler) Logout(c *gin.Context) {
+	ctx, cancel := context.WithTimeoutCause(context.Background(), 10*time.Second, fmt.Errorf(
+		"logout timed out"))
+	defer cancel()
+
+	var requestBody LogoutRequest
+	if err := c.BindJSON(&requestBody); err != nil {
+		utility.RespondWithError(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	err := h.sessionRepo.removeSessionByToken(ctx, requestBody.Token)
+	if err != nil {
+		utility.RespondWithError(c, http.StatusBadRequest, "session not found")
+		return
+	}
+
+	c.JSON(http.StatusOK, "ok")
+}
+
 func createJWT(details UserDetails) (*string, error) {
 	secretKey := []byte(config.String(constants.SecretKey))
 
